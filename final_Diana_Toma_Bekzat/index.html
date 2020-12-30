@@ -1,0 +1,948 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8">
+  <style>
+
+    body {
+      background-color: white;
+    }
+    svg {
+      border: 2px solid black;
+      background-color: white;
+      vertical-align:top;
+    }
+
+    div{
+      display: block;
+      margin: auto;
+    }
+    .selected {
+      fill: #6B1A1C;
+      fill-opacity: 100%;
+    }
+
+    .boundary {
+      stroke: grey;
+      stroke-width: 1px; 
+    }
+
+    .hidden {
+      display: none;
+    }
+
+    div.tooltip {
+      color: #222; 
+      background: #fff; 
+      border-radius: 3px; 
+      box-shadow: 0px 0px 2px 0px #a6a6a6; 
+      padding: .2em; 
+      text-shadow: #f5f5f5 0 1px 0;
+      opacity: 0.9; 
+      position: absolute;
+    }
+    #total_death{
+      font-size: 1.5rem;
+      margin-top: -40px;
+      margin-left: 1000px;
+    }
+
+    .svg1{
+      margin-left: 1000px;
+      margin-top: 20px;
+    }
+
+    .map1{
+      margin-top: -1660px;
+    }
+
+    .bar {
+      fill: #6B1A1C;
+     }
+    .highlight {
+       fill: red;
+     }
+    .title {
+       fill: blue;
+       font-weight: bold;
+     }
+    .info{
+      fill: blue;
+     }
+    .education{
+      margin-top: -50;
+      margin-left: 5rem;
+     }
+
+    .svg3{
+      margin-left: 0px;
+      margin-top: 20px;
+    }
+    .my_dataviz3{
+      margin-left: -200px;
+      margin-top: 20px;
+    }
+  </style>
+</head>
+
+<body>
+
+
+<div id = "header" align="center">
+  <h1>COVID - 19</h1>
+  <h2 style="margin-top: -1.5rem">Some information about death rate because of COVID-19</h2>
+  <h3 style="margin-top: -1.2rem; margin-left: -26.6rem"><b>Total death: </b> 1605595</h3>
+</div>
+<div id="total_death">
+  <br>
+  Click the country on MAP<br>
+  To see more information 
+  <br>
+</div>
+<div id="map"></div>
+<div id="my_dataviz"> </div>
+<div id="my_dataviz1"> </div>
+<div id="education">
+  <h2 style="margin-top: -18rem; margin-left: 5rem;">Some information about the COVID-19's influence to education</h2>
+</div>
+
+<div id="my_dataviz3"> </div>
+<div id="my_dataviz4"> </div>
+
+  <script src="https://d3js.org/d3.v3.min.js"></script>
+  <script src="https://d3js.org/topojson.v1.min.js"></script>
+  <script src="https://d3js.org/d3.v4.js"></script>
+  <script src="https://d3js.org/d3-scale-chromatic.v1.min.js"></script>
+  <script>
+
+
+
+    var width = 962,
+        rotated = -10,
+        height = 502;
+
+    //countries which have states, needed to toggle visibility
+    //for USA/ etc. either show countries or states, not both
+    var usa, canada; 
+    var states; //track states
+    //track where mouse was clicked
+    var initX;
+    //track scale only rotate when s === 1
+    var s = 1;
+    var mouseClicked = false;
+    var death_per_day;
+
+
+    var projection = d3.geo.mercator()
+        .scale(153)
+        .translate([width/2,height/1.5])
+        .rotate([rotated,0,0]); //center on USA because 'murica
+
+    var zoom = d3.behavior.zoom()
+         .scaleExtent([1, 20])
+         .on("zoom", zoomed);
+
+    var svg = d3.select("body").append("svg")
+        .attr("width", width)
+        .attr("height", height)
+        .attr("class", "map1")
+          //track where user clicked down
+          .on("mousedown", function() {
+             d3.event.preventDefault(); 
+             //only if scale === 1
+             if(s !== 1) return;
+               initX = d3.mouse(this)[0];
+               mouseClicked = true;
+          })
+          .on("mouseup", function() {
+              if(s !== 1) return;
+              rotated = rotated + ((d3.mouse(this)[0] - initX) * 360 / (s * width));
+              mouseClicked = false;
+          })
+        .call(zoom);
+
+
+
+
+
+      function rotateMap(endX) {
+        projection.rotate([rotated + (endX - initX) * 360 / (s * width),0,0])
+            g.selectAll('path')       // re-project path data
+           .attr('d', path);
+      }
+    //for tooltip 
+    var offsetL = document.getElementById('map').offsetLeft+10;
+    var offsetT = document.getElementById('map').offsetTop - 30;
+
+    var path = d3.geo.path()
+        .projection(projection);
+
+    var tooltip = d3.select("#map")
+         .append("div")
+         .attr("class", "tooltip hidden");
+
+    //need this for correct panning
+    var g = svg.append("g");
+
+
+
+
+    //det json data and draw it
+    d3.json("counties.json", function(error, world) {
+      console.log(world)
+      if(error) return console.error(error);
+
+      //countries
+      g.append("g")
+          .attr("class", "boundary")
+        .selectAll("boundary")
+          .data(topojson.feature(world, world.objects.countries).features)
+          .enter().append("path")
+          .attr("name", function(d) {return d.properties.name;})
+          .attr("death", function(d) { return d.properties.death;})
+          .attr("death_per_day", function(d){return JSON.stringify(d.properties.death_per_day);})
+          .attr("death_per_month", function(d){return JSON.stringify(d.properties.death_per_month);})
+          .attr("fill", "black")
+          .style("fill-opacity", d=>d.properties.death*.0002)
+          .on('click', selected)
+          .on("mousemove", showTooltip)
+          .on("mouseout",  function(d,i) {
+              tooltip.classed("hidden", true);
+           })
+          .attr("d", path);
+
+      usa = d3.select('#USA');
+      canada = d3.select('#CAN');
+        
+      //states
+      g.append("g")
+          .attr("class", "boundary state hidden")
+        .selectAll("boundary")
+          .data(topojson.feature(world, world.objects.states).features)
+          .enter().append("path")
+          .attr("name", function(d) { return d.properties.name;})
+          .attr("id", function(d) { return d.id;})
+          .attr("death", function(d) { return d.properties.death;})
+          .attr("death_per_day", function(d){return d.properties.death_per_day})
+          .attr("death_per_month", function(d){return JSON.stringify(d.properties.death_per_month);})
+          .on('click', selected)
+          .on("mousemove", showTooltip)
+          .on("mouseout",  function(d,i) {
+              tooltip.classed("hidden", true);
+           })
+          .attr("d", path);
+
+      states = d3.selectAll('.state');
+    });
+
+    function showTooltip(d) {
+      label = d.properties.name;
+      var mouse = d3.mouse(svg.node())
+        .map( function(d) { return parseInt(d); } );
+      tooltip.classed("hidden", false)
+        .attr("style", "left:"+(mouse[0]+offsetL)+"px;top:"+(mouse[1]+offsetT)+"px")
+        .html(label);
+    }
+
+    var margin = {top: 10, right: 30, bottom: 30, left: 40},
+    width1 = 500 - margin.left - margin.right,
+    height1 = 350 - margin.top - margin.bottom;
+
+// append the svg object to the body of the page
+
+var svg1 = d3.select("#my_dataviz")
+  .append("svg")
+    .attr("width", width1 + margin.left + margin.right)
+    .attr("height", height1 + margin.top + margin.bottom)
+    .attr("class", "svg1")
+  .append("g")
+    .attr("transform",
+          "translate(" + margin.left + "," + margin.top + ")");
+
+var svg2 = d3.select("#my_dataviz1")
+  .append("svg")
+    .attr("width", width1 + margin.left + margin.right)
+    .attr("height", height1  + margin.top + margin.bottom)
+    .attr("class", "svg1")
+  .append("g")
+    .attr("transform",
+          "translate(" + margin.left + "," + margin.top + ")");
+
+
+    function selected() {
+
+    var x2 = d3.selectAll(".x2");
+    x2.remove();
+    var y2 = d3.selectAll(".y2");
+    y2.remove();
+    var rect = d3.selectAll("rect");
+    rect.remove();
+    death_per_month = this.getAttribute('death_per_month')
+
+
+    data4 = JSON.parse(death_per_month)
+    data3 = []
+    for (let i = data4.length - 1; i >= 0; i--){
+      data3.push(data4[i])
+    }
+
+
+    var xScale = d3.scaleBand().range([0, width1]).padding(0.4);
+    var yScale = d3.scaleLinear().range([height1,0]);
+    var yScale2 = d3.scaleLinear().range([height1,0]);
+    var g = svg2.append("g");
+    g.attr("transform","translate(20,10)")
+
+    xScale.domain(data3.map(function(d) { return d.date;}));
+    yScale.domain([0,d3.max(data3, function(d) {
+      return d.value;})
+    ]);
+
+
+
+
+
+    g.append("g")
+    .attr("transform","translate(0,310)")
+    .call(d3.axisBottom(xScale))
+    .attr("class", "x2");
+
+    g.append("g")
+    .call(d3.axisLeft(yScale))
+    .attr("class", "y2");
+
+    g.selectAll(".bar")
+    .data(data3)
+    .enter()
+    .append("rect")
+    .attr("class","bar")
+    .attr("x", (d)=>xScale(d.date))
+    .attr("y", (d)=>yScale(d.value))
+    .attr("width", xScale.bandwidth())
+    .transition()
+    .ease(d3.easeLinear)
+    .delay((d,i)=>i*50)
+    .attr("height", (d)=>(height-yScale(d.value)-193));
+
+
+
+    var line = d3.selectAll("line");
+    line.remove();
+
+    var scaleLinear = d3.selectAll(".ybottom");
+    scaleLinear.remove();
+
+      d3.select('.selected').classed('selected', false);
+      d3.select(this).classed('selected', true);
+      death_per_day = this.getAttribute('death_per_day');
+      document.getElementById('total_death').innerHTML = "<b>Selected country:</b>" + this.getAttribute('name') + "<br> <b>Total death for observed span: </b>" + this.getAttribute('death') + '<br> <b>From: </b>' + JSON.parse(death_per_day)[JSON.parse(death_per_day).length - 1].date + ' <b>to: </b>' + JSON.parse(death_per_day)[0].date;
+      
+    y_band = []
+    for (let i = 0; i < JSON.parse(death_per_day).length; i++){
+      y_band.push(JSON.parse(death_per_day)[i].date)
+    }
+    var x = d3.scaleBand()
+      .range([ 0, width1 ]);
+    svg1.append("g")
+      .attr("transform", "translate(0," + height1 + ")")
+      .call(d3.axisBottom(x))
+      .attr("class", "xbottom");
+    var y = d3.scaleLinear()
+      .domain([0, d3.max(JSON.parse(death_per_day), function(d) { return d.value; })])
+      .range([ height1, 0 ]);
+    svg1.append("g")
+      .call(d3.axisLeft(y))
+      .attr("class", "ybottom");
+    data2 = JSON.parse(death_per_day)
+    step = 5
+    for (let i = JSON.parse(death_per_day).length - 1; i > 2; i--){
+      d = data2[i]
+      d2 = data2[i - 1]
+      console.log(d.value, '-',d2.value)
+      if (d && d2){
+            svg1
+              .append("line")        
+              .attr("x1", step)
+              .attr("y1", y(d.value))
+              .attr("x2", step + 1.2)
+              .attr("y2", y(d2.value))
+              .style("stroke", "#6B1A1C") 
+              .style("stroke-width", "1px") 
+              step = step + 1.2}
+              else {
+            svg1
+              .append("line")        
+              .attr("x1", step)
+              .attr("y1", height1 - d.value* (d.value/height1))
+              .attr("x2", step + 1.2)
+              .attr("y2", height1 - d.value* (d.value/height1))
+              .style("stroke", "#6B1A1C") 
+              .style("stroke-width", "1px") 
+              step = step + 1.2}
+      }
+   } 
+
+    
+    function zoomed() {
+      var t = d3.event.translate;
+      s = d3.event.scale; 
+      var h = 0;
+
+      t[0] = Math.min(
+        (width/height)  * (s - 1), 
+        Math.max( width * (1 - s), t[0] )
+      );
+
+      t[1] = Math.min(
+        h * (s - 1) + h * s, 
+        Math.max(height  * (1 - s) - h * s, t[1])
+      );
+
+      zoom.translate(t);
+      if(s === 1 && mouseClicked) {
+        rotateMap(d3.mouse(this)[0])
+        return;
+      }
+
+      g.attr("transform", "translate(" + t + ")scale(" + s + ")");
+
+      //adjust the stroke width based on zoom level
+      d3.selectAll(".boundary")
+        .style("stroke-width", 1 / s);
+      
+      //toggle state/USA visability
+      if(s > 1.5) {
+        states
+          .classed('hidden', false);
+        usa
+          .classed('hidden', true);
+        canada
+          .classed('hidden', true);
+      } else {
+      states
+        .classed('hidden', true);
+      usa
+        .classed('hidden', false);
+      canada
+        .classed('hidden', false);
+    }
+  }
+
+
+  var svg3 = d3.select("#my_dataviz3")
+  .append("svg")
+    .attr("width", (width1 + margin.left + margin.right - 20) * 2)
+    .attr("height", (height1 + margin.top + margin.bottom) * 2.5 +200)
+    .attr("class", "svg1")
+    .attr("transform",
+          "translate(-1000, 0)")
+  .append("g")
+    .attr("transform",
+          "translate(" + 100 + "," + 100 + ")");
+
+  data4 = [
+  {
+    "GPA": "+90 / +3.5",
+    "Agree": 49,
+    "StronglyAgree": 56,
+    "Disagree": 12,
+    "Uncertain": 9,
+    "StronglyDisagree": 5
+  },
+  {
+    "GPA": "80-89 / 3-3.49",
+    "Agree": 135,
+    "StronglyAgree": 105,
+    "Disagree": 33,
+    "Uncertain": 27,
+    "StronglyDisagree": 7
+  },
+  {
+    "GPA": "70-79 / 2.5-299",
+    "Agree": 103,
+    "StronglyAgree": 104,
+    "Disagree": 14,
+    "Uncertain": 35,
+    "StronglyDisagree": 7
+  },
+  {
+    "GPA": "60-69 / 2-2.9",
+    "Agree": 2,
+    "StronglyAgree": 0,
+    "Disagree": 0,
+    "Uncertain": 1,
+    "StronglyDisagree": 1
+  },
+  {
+    "GPA": "60-69 / 2-2.49",
+    "Agree": 26,
+    "StronglyAgree": 24,
+    "Disagree": 4,
+    "Uncertain": 12,
+    "StronglyDisagree": 1
+  },
+  {
+    "GPA": "Below 60 / Below 2.0",
+    "Agree": 1,
+    "StronglyAgree": 2,
+    "Disagree": 0,
+    "Uncertain": 0,
+    "StronglyDisagree": 0
+  }
+]
+
+svg3
+  .append('text')
+  .text("Before COVID-19: I have fixed hours for bedtime and wake-up.")
+  .attr("transform", "translate(300,-60)")
+  .style("text-anchor", "middle")
+  .style("font-size", 20)
+var step = 0
+for (let number = 0; number < data4.length; number ++){
+  
+  var width3 = 230
+    height3 = 230
+    margin3 = 40
+  let data_temp = {'Agree': data4[number].Agree, 'StronglyAgree':data4[number].StronglyAgree, 'Disagree':data4[number].Disagree, 'Uncertain':data4[number].Uncertain, 'StronglyDisagree':data4[number].StronglyDisagree}
+  console.log(data_temp)
+
+
+
+
+var color = d3.scaleOrdinal()
+    .domain(data_temp)
+    .range(d3.schemeSet2);
+
+  // Compute the position of each group on the pie:
+  var pie = d3.pie()
+    .value(function(d) {return (d.value)})
+  var data_ready = pie(d3.entries(data_temp))
+  // Now I know that group A goes from 0 degrees to x degrees and so on.
+
+  // shape helper to build arcs:
+  var radius = Math.min(width3, height3) / 2 - margin3
+  var arcGenerator = d3.arc()
+    .innerRadius(0)
+    .outerRadius(radius)
+
+  svg3
+    .selectAll('mySlices')
+    .data(data_ready)
+    .enter()
+    .append('text')
+    .text(data4[number].GPA)
+    .attr("transform", "translate("+step+",150)")
+    .style("text-anchor", "middle")
+    .style("font-size", 17)
+
+  // Build the pie chart: Basically, each part of the pie is a path that we build using the arc function.
+  svg3
+    .selectAll('mySlices')
+    .data(data_ready)
+    .enter()
+    .append('path')
+      .attr('d', arcGenerator)
+      .attr('fill', function(d){ return(color(d.data.key)) })
+      .attr("stroke", "black")
+      .style("stroke-width", "2px")
+      .style("opacity", 0.7)
+      .transition()
+      .attr("transform", "translate("+step+",50)")
+
+  // Now add the annotation. Use the centroid method to get the best coordinates
+  svg3
+    .selectAll('mySlices')
+    .data(data_ready)
+    .enter()
+    .append('text')
+    .text(function(d){ {if (d.data.value > 0) {return d.data.key}}})
+    .attr("transform", function(d) { return "translate(" + (arcGenerator.centroid(d)[0]+step)+","+(arcGenerator.centroid(d)[1] + 50)+ ")";  })
+    .style("text-anchor", "middle")
+    .style("font-size", 12)
+
+  step = step + 150
+  }
+
+svg3
+  .append('text')
+  .text("After COVID-19: I have fixed hours for bedtime and wake-up.")
+  .attr("transform", "translate(300,200)")
+  .style("text-anchor", "middle")
+  .style("font-size", 20)
+
+data5 = [
+  {
+    "GPA": "+90 / +3.5",
+    "Agree": 24,
+    "StronglyAgree": 14,
+    "Disagree": 43,
+    "Uncertain": 15,
+    "StronglyDisagree": 35
+  },
+  {
+    "GPA": "80-89 / 3-3.49",
+    "Agree": 55,
+    "StronglyAgree": 23,
+    "Disagree": 113,
+    "Uncertain": 51,
+    "StronglyDisagree": 65
+  },
+  {
+    "GPA": "70-79 / 2.5-299",
+    "Agree": 47,
+    "StronglyAgree": 23,
+    "Disagree": 92,
+    "Uncertain": 49,
+    "StronglyDisagree": 52
+  },
+  {
+    "GPA": "60-69 / 2-2.9",
+    "Agree": 0,
+    "StronglyAgree": 1,
+    "Disagree": 3,
+    "Uncertain": 0,
+    "StronglyDisagree": 0
+  },
+  {
+    "GPA": "60-69 / 2-2.49",
+    "Agree": 8,
+    "StronglyAgree": 13,
+    "Disagree": 20,
+    "Uncertain": 16,
+    "StronglyDisagree": 10
+  },
+  {
+    "GPA": "Below 60 / Below 2.0",
+    "Agree": 1,
+    "StronglyAgree": 1,
+    "Disagree": 0,
+    "Uncertain": 1,
+    "StronglyDisagree": 0
+  }
+]
+step = 0
+
+for (let number = 0; number < data5.length; number ++){
+  
+  var width3 = 230
+    height3 = 230
+    margin3 = 40
+  let data_temp = {'Agree': data5[number].Agree, 'StronglyAgree':data5[number].StronglyAgree, 'Disagree':data5[number].Disagree, 'Uncertain':data5[number].Uncertain, 'StronglyDisagree':data5[number].StronglyDisagree}
+  console.log('data_temp', )
+
+
+
+
+var color = d3.scaleOrdinal()
+    .domain(data_temp)
+    .range(d3.schemeSet2);
+
+  // Compute the position of each group on the pie:
+  var pie = d3.pie()
+    .value(function(d) {return (d.value)})
+  var data_ready = pie(d3.entries(data_temp))
+  // Now I know that group A goes from 0 degrees to x degrees and so on.
+
+  // shape helper to build arcs:
+  var radius = Math.min(width3, height3) / 2 - margin3
+  var arcGenerator = d3.arc()
+    .innerRadius(0)
+    .outerRadius(radius)
+
+
+  // Build the pie chart: Basically, each part of the pie is a path that we build using the arc function.
+  svg3
+    .selectAll('mySlices')
+    .data(data_ready)
+    .enter()
+    .append('path')
+      .attr('d', arcGenerator)
+      .attr('fill', function(d){ return(color(d.data.key)) })
+      .attr("stroke", "black")
+      .style("stroke-width", "2px")
+      .style("opacity", 0.7)
+      .transition()
+      .attr("transform", "translate("+step+",300)")
+
+  // Now add the annotation. Use the centroid method to get the best coordinates
+  svg3
+    .selectAll('mySlices')
+    .data(data_ready)
+    .enter()
+    .append('text')
+    .text(function(d){ {if (d.data.value > 0) {return d.data.key}}})
+    .attr("transform", function(d) { return "translate(" + (arcGenerator.centroid(d)[0]+step)+","+(arcGenerator.centroid(d)[1] + 300)+ ")";  })
+    .style("text-anchor", "middle")
+    .style("font-size", 12)
+
+  svg3
+    .selectAll('mySlices')
+    .data(data_ready)
+    .enter()
+    .append('text')
+    .text(data5[number].GPA)
+    .attr("transform", "translate("+step+",400)")
+    .style("text-anchor", "middle")
+    .style("font-size", 17)
+
+
+  step = step + 150
+  } 
+
+
+data6 = [
+  {
+    "GPA": "+90 / +3.5",
+    "StronglyAgree": 49,
+    "Disagree": 17,
+    "Uncertain": 17,
+    "Agree": 30,
+    "StronglyDisagree": 5
+  },
+  {
+    "GPA": "80-89 / 3-3.49",
+    "StronglyAgree": 110,
+    "Disagree": 38,
+    "Uncertain": 49,
+    "Agree": 51,
+    "StronglyDisagree": 18
+  },
+  {
+    "GPA": "70-79 / 2.5-299",
+    "StronglyAgree": 93,
+    "Disagree": 18,
+    "Uncertain": 24,
+    "Agree": 40,
+    "StronglyDisagree": 13
+  },
+  {
+    "GPA": "60-69 / 2-2.9",
+    "StronglyAgree": 1,
+    "Disagree": 1,
+    "Uncertain": 1,
+    "Agree": 0,
+    "StronglyDisagree": 0
+  },
+  {
+    "GPA": "60-69 / 2-2.49",
+    "StronglyAgree": 14,
+    "Disagree": 3,
+    "Uncertain": 2,
+    "Agree": 17,
+    "StronglyDisagree": 2
+  },
+  {
+    "GPA": "Below 60 / Below 2.0",
+    "StronglyAgree": 0,
+    "Disagree": 1,
+    "Uncertain": 2,
+    "Agree": 0,
+    "StronglyDisagree": 0
+  }
+]
+
+svg3
+  .append('text')
+  .text("FEMALE: Taking quizzes and exams online from home was not comfortable and made me nervous.")
+  .attr("transform", "translate(400,450)")
+  .style("text-anchor", "middle")
+  .style("font-size", 20)
+
+step = 0
+
+for (let number = 0; number < data6.length; number ++){
+  
+  var width3 = 230
+    height3 = 230
+    margin3 = 40
+  let data_temp = {'Agree': data6[number].Agree, 'StronglyAgree':data6[number].StronglyAgree, 'Disagree':data6[number].Disagree, 'Uncertain':data6[number].Uncertain, 'StronglyDisagree':data6[number].StronglyDisagree}
+
+
+
+
+var color = d3.scaleOrdinal()
+    .domain(data_temp)
+    .range(d3.schemeSet2);
+
+  // Compute the position of each group on the pie:
+  var pie = d3.pie()
+    .value(function(d) {return (d.value)})
+  var data_ready = pie(d3.entries(data_temp))
+  // Now I know that group A goes from 0 degrees to x degrees and so on.
+
+  // shape helper to build arcs:
+  var radius = Math.min(width3, height3) / 2 - margin3
+  var arcGenerator = d3.arc()
+    .innerRadius(0)
+    .outerRadius(radius)
+
+
+  // Build the pie chart: Basically, each part of the pie is a path that we build using the arc function.
+  svg3
+    .selectAll('mySlices')
+    .data(data_ready)
+    .enter()
+    .append('path')
+      .attr('d', arcGenerator)
+      .attr('fill', function(d){ return(color(d.data.key)) })
+      .attr("stroke", "black")
+      .style("stroke-width", "2px")
+      .style("opacity", 0.7)
+      .transition()
+      .attr("transform", "translate("+step+",550)")
+
+  // Now add the annotation. Use the centroid method to get the best coordinates
+  svg3
+    .selectAll('mySlices')
+    .data(data_ready)
+    .enter()
+    .append('text')
+    .text(function(d){ {if (d.data.value > 0) {return d.data.key}}})
+    .attr("transform", function(d) { return "translate(" + (arcGenerator.centroid(d)[0]+step)+","+(arcGenerator.centroid(d)[1] + 550)+ ")";  })
+    .style("text-anchor", "middle")
+    .style("font-size", 12)
+
+  svg3
+    .selectAll('mySlices')
+    .data(data_ready)
+    .enter()
+    .append('text')
+    .text(data6[number].GPA)
+    .attr("transform", "translate("+step+",650)")
+    .style("text-anchor", "middle")
+    .style("font-size", 17)
+
+
+  step = step + 150
+  } 
+
+data7 = [
+  {
+    "GPA": "+90 / +3.5",
+    "StronglyAgree": 4,
+    "Disagree": 1,
+    "Uncertain": 2,
+    "Agree": 4,
+    "StronglyDisagree": 2
+  },
+  {
+    "GPA": "80-89 / 3-3.49",
+    "StronglyAgree": 11,
+    "Disagree": 5,
+    "Uncertain": 9,
+    "Agree": 10,
+    "StronglyDisagree": 6
+  },
+  {
+    "GPA": "70-79 / 2.5-299",
+    "StronglyAgree": 26,
+    "Disagree": 9,
+    "Uncertain": 8,
+    "Agree": 26,
+    "StronglyDisagree": 6
+  },
+  {
+    "GPA": "60-69 / 2-2.9",
+    "StronglyAgree": 0,
+    "Disagree": 0,
+    "Uncertain": 0,
+    "Agree": 0,
+    "StronglyDisagree": 1
+  },
+  {
+    "GPA": "60-69 / 2-2.49",
+    "StronglyAgree": 12,
+    "Disagree": 3,
+    "Uncertain": 3,
+    "Agree": 8,
+    "StronglyDisagree": 3
+  },
+  {
+    "GPA": "Below 60 / Below 2.0",
+    "StronglyAgree": 0,
+    "Disagree": 0,
+    "Uncertain": 0,
+    "Agree": 0,
+    "StronglyDisagree": 0
+  }
+]
+
+svg3
+  .append('text')
+  .text("MALE: Taking quizzes and exams online from home was not comfortable and made me nervous.")
+  .attr("transform", "translate(400,700)")
+  .style("text-anchor", "middle")
+  .style("font-size", 20)
+
+step = 0
+
+for (let number = 0; number < data7.length; number ++){
+  
+  var width3 = 230
+    height3 = 230
+    margin3 = 40
+  let data_temp = {'Agree': data7[number].Agree, 'StronglyAgree':data7[number].StronglyAgree, 'Disagree':data7[number].Disagree, 'Uncertain':data7[number].Uncertain, 'StronglyDisagree':data7[number].StronglyDisagree}
+
+
+
+
+var color = d3.scaleOrdinal()
+    .domain(data_temp)
+    .range(d3.schemeSet2);
+
+  // Compute the position of each group on the pie:
+  var pie = d3.pie()
+    .value(function(d) {return (d.value)})
+  var data_ready = pie(d3.entries(data_temp))
+  // Now I know that group A goes from 0 degrees to x degrees and so on.
+
+  // shape helper to build arcs:
+  var radius = Math.min(width3, height3) / 2 - margin3
+  var arcGenerator = d3.arc()
+    .innerRadius(0)
+    .outerRadius(radius)
+
+
+  // Build the pie chart: Basically, each part of the pie is a path that we build using the arc function.
+  svg3
+    .selectAll('mySlices')
+    .data(data_ready)
+    .enter()
+    .append('path')
+      .attr('d', arcGenerator)
+      .attr('fill', function(d){ return(color(d.data.key)) })
+      .attr("stroke", "black")
+      .style("stroke-width", "2px")
+      .style("opacity", 0.7)
+      .transition()
+      .attr("transform", "translate("+step+",800)")
+
+  // Now add the annotation. Use the centroid method to get the best coordinates
+  svg3
+    .selectAll('mySlices')
+    .data(data_ready)
+    .enter()
+    .append('text')
+    .text(function(d){ {if (d.data.value > 0) {return d.data.key}}})
+    .attr("transform", function(d) { return "translate(" + (arcGenerator.centroid(d)[0]+step)+","+(arcGenerator.centroid(d)[1] + 800)+ ")";  })
+    .style("text-anchor", "middle")
+    .style("font-size", 12)
+
+  svg3
+    .selectAll('mySlices')
+    .data(data_ready)
+    .enter()
+    .append('text')
+    .text(data7[number].GPA)
+    .attr("transform", "translate("+step+",900)")
+    .style("text-anchor", "middle")
+    .style("font-size", 17)
+
+
+  step = step + 150
+  } 
+
+  </script>
+</body>
+</html>
